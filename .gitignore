@@ -4,5 +4,4 @@ TestResults/
 artifacts/
 engine/
 *.user
-/.vs/IpRoyalService.slnx/FileContentIndex
-/deploy
+.vs/

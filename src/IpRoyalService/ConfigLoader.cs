@@ -24,8 +24,9 @@ public sealed class ConfigLoader(ILogger<ConfigLoader> log)
         if (c.ServerPort is < 1 or > 65535) e.Add("server_port must be 1..65535");
         if (c.ReservePort is < 1 or > 65535) e.Add("reserve_port must be 1..65535");
         if (c.ServerPort == c.ReservePort) e.Add("reserve_port must differ from server_port");
-        if (string.IsNullOrWhiteSpace(c.Username)) e.Add("username is required");
-        if (string.IsNullOrEmpty(c.Password)) e.Add("password is required");
+        var hasUsername = !string.IsNullOrWhiteSpace(c.Username);
+        var hasPassword = !string.IsNullOrEmpty(c.Password);
+        if (hasUsername != hasPassword) e.Add("username and password must either both be provided or both be empty for a proxy without authentication");
         return e;
     }
 }

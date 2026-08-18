@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows-x64:
+    runs-on: windows-latest
+    env:
+      SING_BOX_VERSION: '1.13.15'
+      SING_BOX_WINDOWS_AMD64_SHA256: '599b296f6e57511d36d2a6f3011aed1a86fa98418578bbb06bd6dc241b5d8877'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release
+
+      - name: Download pinned Windows packet engine
+        shell: pwsh
+        run: |
+          $url = "https://github.com/SagerNet/sing-box/releases/download/v$env:SING_BOX_VERSION/sing-box-$env:SING_BOX_VERSION-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile sing-box-windows-amd64.zip
+          $actual = (Get-FileHash -Algorithm SHA256 ./sing-box-windows-amd64.zip).Hash.ToLowerInvariant()
+          if ($actual -ne $env:SING_BOX_WINDOWS_AMD64_SHA256) { throw "Packet engine checksum mismatch." }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version=6.4.3 --yes --no-progress
+
+      - name: Publish and build installer
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          ./build/Build-Installer.ps1 -Version $version -SingBoxZip ./sing-box-windows-amd64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: |
+            artifacts/installer/IpRoyalService-${{ github.ref_name }}-win-x64-Setup.exe
+            artifacts/installer/IpRoyalService-${{ github.ref_name }}-win-x64-Setup.exe.sha256
+          fail_on_unmatched_files: true

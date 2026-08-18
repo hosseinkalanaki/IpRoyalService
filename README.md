@@ -1,79 +1,187 @@
 # IPRoyal SOCKS5 Enforcement Service
 
-A Windows Service that sends ordinary IPv4/IPv6 traffic through the SOCKS5 proxy in `config.json`. It manages a **sing-box TUN** packet engine with strict routing, proxied DNS, health monitoring, automatic recovery, and explicit RDP/private-network exclusions.
+This Windows Service routes ordinary system-wide IPv4 and IPv6 traffic through a SOCKS5 proxy. Browsers and other applications do not need individual proxy settings.
 
-> **Safety warning:** test installation, proxy failure, service crash, reboot, IPv4/IPv6, DNS, and RDP access on a disposable Windows VM with console access before deploying to any production or remote machine.
+> **Safety warning:** first test proxy failure, recovery, DNS, reboot, and both existing and new RDP connections on a disposable Windows machine with console access.
 
-## Design and guarantees
+## Install on Windows
 
-The TUN engine installs temporary owned routes while it runs. `strict_route` prevents ordinary direct fallback and DNS leakage; the SOCKS server is reached through the automatically detected physical interface. TCP/UDP port 3389 and private/local destinations route directly, so inbound RDP responses, outbound RDP clients, loopback, and ordinary LAN administration are not proxied. The service only writes `%ProgramData%\IpRoyalService\engine.json` and TUN-owned routes/adapters; it does not change system proxy settings, unrelated firewall rules, or permanent routes.
+### 1. Download the installer
 
-If the proxy becomes unusable, traffic captured by the strict TUN remains unavailable and health checks continue. When healthy again, traffic recovers automatically. Service recovery is configured for crashes. An intentional stop removes the engine's TUN routes, restoring the pre-service networking state. Therefore, **intentional stop/uninstall is deliberately fail-open**, as required for clean restoration. A process crash has a short service-recovery interval; this user-mode design cannot make a mathematically gap-free crash kill-switch. Environments requiring a zero-gap guarantee must add an organization-managed, signed WFP callout driver and should not claim this service alone provides that stronger property.
+Open the project's GitHub **Releases** page and download:
 
-## Prerequisites
+```text
+IpRoyalService-vX.Y.Z-win-x64-Setup.exe
+```
 
-- Windows 10/11 or Windows Server 2019+ x64
-- Administrator rights (LocalSystem is used because TUN/route operations require it)
-- .NET 8 SDK to build; self-contained publishing avoids a runtime prerequisite
-- A trusted x64 Windows `sing-box` release ZIP, supplied explicitly to the installer. Pin and verify its checksum/signature through your deployment system.
+This is the primary end-user download for 64-bit Intel/AMD Windows. Do not download GitHub's automatically generated “Source code” archives. The installer contains the service, private .NET runtime, packet engine, configuration wizard, and service-management shortcut; Visual Studio, the .NET SDK, and programming knowledge are not required.
 
-## Configuration
+An adjacent `.sha256` file is provided for optional download verification.
 
-The supplied schema is preserved exactly:
+### 2. Run the installer
+
+1. Double-click the downloaded installer.
+2. Approve the Windows administrator prompt.
+3. Keep the default installation folder unless there is a specific reason to change it.
+4. Enter the proxy settings described below.
+5. Select **Install**.
+
+After a successful clean installation, the installer registers the `IpRoyalProxyEnforcement` Windows Service for automatic startup and starts it immediately. Installation failures are reported and a newly created, broken service registration is removed.
+
+## Proxy settings requested by the installer
+
+| Setting | Normal value |
+|---|---|
+| Proxy type | `socks` |
+| Proxy version | `5` |
+| Proxy server | Provider hostname or IP address; required |
+| Proxy server port | Provider port from 1 to 65535; default `1080` |
+| Reserved/local port | Unused local port; default `11200` |
+| Username | Optional; leave empty for no authentication |
+| Password | Optional; leave empty for no authentication |
+
+Username and password must either both be filled or both be empty. The reserved/local port must differ from the proxy server port. The password is held only long enough to create the configuration and is not passed through installer command-line arguments or deliberately written to installer/service logs.
+
+## Configuration after installation
+
+The service always reads:
+
+```text
+C:\Program Files\IpRoyalService\config.json
+```
+
+If a different installation directory was selected, `config.json` is beside `IpRoyalService.exe` in that directory. Its format is:
 
 ```json
 {
   "type": "socks",
   "version": "5",
-  "server": "geo.iproyal.com",
-  "server_port": 12321,
+  "server": "proxy.example.com",
+  "server_port": 1080,
   "reserve_port": 11200,
-  "username": "...",
-  "password": "..."
+  "username": "",
+  "password": ""
 }
 ```
 
-`reserve_port` is a loopback-only SOCKS health listener. The password is never deliberately logged; engine output is redacted as defense in depth. The installer restricts `config.json` to Administrators and SYSTEM. For production, inject the file from a secrets system rather than committing credentials.
+The installer restricts this file to Administrators and SYSTEM. To change the proxy later:
 
-## Build and test
+1. Open **Start → IPRoyal SOCKS5 Enforcement → Edit Proxy Configuration**.
+2. Approve administrator access if Windows requests it.
+3. Save the edited file.
+4. Restart the service using **Manage Service**.
+
+The service does not live-reload this file; changes take effect after restart.
+
+## Start, stop, restart, status, and logs
+
+Open **Start → IPRoyal SOCKS5 Enforcement → Manage Service**. The menu can start, stop, restart, display status, edit configuration, or open the service log. Windows requests administrator permission for service changes.
+
+Administrators can alternatively use PowerShell:
+
+```powershell
+Start-Service IpRoyalProxyEnforcement
+Stop-Service IpRoyalProxyEnforcement
+Restart-Service IpRoyalProxyEnforcement
+Get-Service IpRoyalProxyEnforcement
+```
+
+Operational logs are stored at:
+
+```text
+C:\ProgramData\IpRoyalService\service.log
+```
+
+The password is never intentionally logged, and packet-engine output is redacted as an additional precaution.
+
+## Upgrade or reinstall
+
+Download and run the newer installer. It safely stops the existing service before replacing application-owned binaries and starts it again afterward.
+
+The existing installed `config.json` is preserved by default. The installer displays an explicit **Replace my existing config.json** option during an upgrade; leave it unselected to retain the current proxy settings. If selected, the installer asks for new values and replaces the file. A failed replacement attempts to restore the previous configuration.
+
+## Uninstall
+
+Use either:
+
+- **Windows Settings → Apps → Installed apps → IPRoyal SOCKS5 Enforcement → Uninstall**, or
+- **Control Panel → Programs and Features**.
+
+The standard uninstaller stops and unregisters only `IpRoyalProxyEnforcement`, removes installed application files and application-owned runtime logs, and leaves `config.json` in the installation directory for safe reuse. Delete that remaining file manually only when its stored credentials are no longer needed.
+
+## Networking behavior
+
+When the proxy is healthy, ordinary IPv4/IPv6 application traffic and DNS use the enforced proxy path. Local loopback and private-network communication remain direct.
+
+When the proxy is unavailable or authentication fails, captured Internet traffic stays blocked instead of silently falling back to a direct connection. The service checks recovery every 10 seconds and restores proxied traffic automatically.
+
+TCP/UDP RDP traffic on port 3389 and private/local destinations bypass proxy enforcement. This is intended to preserve existing and new RDP administration sessions. A custom RDP port is not automatically exempted and requires a routing-rule change before deployment.
+
+An intentional service stop or uninstall removes transient networking state owned by this application and restores ordinary direct networking. The installer does not alter unrelated services, Windows Firewall rules, system proxy settings, or permanent routes.
+
+## Troubleshooting
+
+### Installer rejects the proxy settings
+
+Confirm that the type is `socks`, version is `5`, the server is not empty, both ports are from 1 to 65535 and differ, and username/password are either both filled or both empty.
+
+### Installation fails
+
+Read the understandable error shown by the installer. Confirm administrator approval, sufficient disk space, and that security software did not block service registration. Reboot only if Windows reports files are locked, then run the installer again. Inno Setup's installer log can be supplied to an administrator, but inspect it before sharing; the custom configuration code does not log the entered password.
+
+### Proxy is unreachable or authentication fails
+
+Internet access is intentionally unavailable because enforcement is fail-closed. Check the hostname, port, optional credentials, firewall access to the proxy endpoint, and provider status. Correct `config.json`, then restart the service or wait for automatic recovery.
+
+### Service does not start
+
+Use **Manage Service → Show service status** and inspect `C:\ProgramData\IpRoyalService\service.log`. Configuration problems are reported without printing the password. Re-run the installer if `IpRoyalService.exe` or `engine\sing-box.exe` is missing.
+
+### Emergency recovery
+
+From local or console access, open **Manage Service** and choose **Stop service**. This intentionally stops the packet engine and removes its temporary routing state.
+
+## Technical limitation
+
+The project uses a user-mode TUN engine. It maintains strict routing while the engine is active, but cannot promise a mathematically zero-length bypass window if both the service and engine crash simultaneously. A signed Windows Filtering Platform callout driver is required for that stronger guarantee.
+
+---
+
+## Developer and release-maintainer instructions
+
+End users do not need anything in this section.
+
+### Build and test
+
+Requirements: Windows and the .NET 8 SDK.
 
 ```powershell
 dotnet restore
 dotnet build --no-restore -c Release
 dotnet test --no-build -c Release
-dotnet publish src/IpRoyalService -c Release -r win-x64 --self-contained true -o artifacts/publish
 ```
 
-Tests validate configuration and secret redaction only and do not alter live networking.
+Tests do not modify live networking.
 
-## Install and operate
+### Build an installer locally
 
-From an elevated PowerShell prompt:
+Install Inno Setup 6, obtain the pinned/trusted sing-box Windows AMD64 ZIP, then run:
 
 ```powershell
-.\artifacts\publish\deploy\Install.ps1 -PublishDirectory .\artifacts\publish -SingBoxZip C:\staging\sing-box-windows-amd64.zip
-Start-Service IpRoyalProxyEnforcement
-Restart-Service IpRoyalProxyEnforcement
-Stop-Service IpRoyalProxyEnforcement
-Get-Service IpRoyalProxyEnforcement
+.\build\Build-Installer.ps1 `
+  -Version 1.0.0 `
+  -SingBoxZip C:\staging\sing-box-windows-amd64.zip
 ```
 
-Edit `C:\Program Files\IpRoyalService\config.json` only while stopped, then restart. Installation is idempotent. To uninstall while retaining configuration:
+Output:
 
-```powershell
-& 'C:\Program Files\IpRoyalService\deploy\Uninstall.ps1'
+```text
+artifacts\installer\IpRoyalService-v1.0.0-win-x64-Setup.exe
+artifacts\installer\IpRoyalService-v1.0.0-win-x64-Setup.exe.sha256
 ```
 
-Add `-RemoveConfiguration` to remove credentials too. Durable newline-delimited JSON logs are written to `%ProgramData%\IpRoyalService\service.log` (and to standard output when run interactively). Startup/configuration, engine state, health loss/recovery, and shutdown are logged without the password.
+The script publishes a self-contained single-file x64 service, stages only runtime/user files, compiles the installer, and generates a checksum. `config.json` is not embedded as a fixed file; the installer creates it from validated wizard input and preserves an installed copy during upgrades unless replacement is explicitly selected.
 
-## Troubleshooting
+### Publish a GitHub Release
 
-- **Service immediately stops:** inspect service-host logs; malformed config and a missing `engine\sing-box.exe` are fatal before routes change.
-- **No Internet:** verify proxy DNS reachability, credentials, port egress, and that the local `reserve_port` is unused.
-- **RDP concern:** validate both an already-open and a new RDP session from a separate console-controlled VM. RDP uses direct port 3389 and private destinations bypass the TUN.
-- **Engine exits:** use a sing-box version supporting `tun`, `mixed`, `strict_route`, DNS HTTPS, and Windows route management. Service recovery retries automatically.
-- **Emergency recovery:** from local/console access run `Stop-Service IpRoyalProxyEnforcement`; intentional stop removes owned transient networking state.
-
-## Security notes
-
-Run as LocalSystem only because transparent adapter and route management require administrative networking privileges. Keep the install directory ACL restricted, checksum-pin the packet engine, rotate the supplied sample credential, and never submit real `config.json` contents in diagnostic reports.
+Push a semantic version tag such as `v1.0.0`. `.github/workflows/release.yml` restores, builds, tests, verifies the pinned packet-engine checksum, publishes the service, builds the Inno Setup installer, and attaches only the versioned installer and checksum to the GitHub Release.
