@@ -1,7 +1,12 @@
 using System.Net.Sockets;
 
 namespace IpRoyalService;
-public sealed class ProxyProbe
+public interface IProxyPathProbe
+{
+    Task<bool> CheckAsync(int localPort, CancellationToken ct);
+}
+
+public sealed class ProxyProbe : IProxyPathProbe
 {
     public async Task<bool> CheckAsync(int localPort, CancellationToken ct)
     {

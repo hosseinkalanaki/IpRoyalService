@@ -1,6 +1,6 @@
-# IPRoyal SOCKS5 Enforcement Service
+# IPRoyal Automatic Proxy Enforcement Service
 
-This Windows Service routes ordinary system-wide IPv4 and IPv6 traffic through a SOCKS5 proxy. Browsers and other applications do not need individual proxy settings.
+This Windows Service routes ordinary system-wide IPv4 and IPv6 traffic through an authenticated proxy. It validates SOCKS5 first and automatically falls back to HTTP when SOCKS5 is unavailable. Browsers and other applications do not need individual proxy settings.
 
 > **Safety warning:** first test proxy failure, recovery, DNS, reboot, and both existing and new RDP connections on a disposable Windows machine with console access.
 
@@ -32,17 +32,15 @@ After a successful clean installation, the installer registers the `IpRoyalProxy
 
 ## Proxy settings requested by the installer
 
-| Setting | Normal value |
+| Setting | Required value |
 |---|---|
-| Proxy type | `socks` |
-| Proxy version | `5` |
 | Proxy server | Provider hostname or IP address; required |
 | Proxy server port | Provider port from 1 to 65535; default `1080` |
-| Reserved/local port | Unused local port; default `11200` |
-| Username | Optional; leave empty for no authentication |
-| Password | Optional; leave empty for no authentication |
+| Reserved/local port | Base of three unused loopback ports; default `11200` |
+| Username | Proxy username; required for a clean Version 2 installation |
+| Password | Proxy password; required and masked in the installer |
 
-Username and password must either both be filled or both be empty. The reserved/local port must differ from the proxy server port. The password is held only long enough to create the configuration and is not passed through installer command-line arguments or deliberately written to installer/service logs.
+The installer does not ask for a protocol. It uses the same endpoint and credentials to validate SOCKS5 first, then HTTP only if SOCKS5 fails. The reserved/local port must be from 1 to 65533 and differ from the proxy server port; it and the next two ports are loopback-only health/control endpoints. The password is held only long enough to create the configuration and is not passed through installer command-line arguments or deliberately written to installer/service logs.
 
 ## Configuration after installation
 
@@ -56,28 +54,26 @@ If a different installation directory was selected, `config.json` is beside `IpR
 
 ```json
 {
-  "type": "socks",
-  "version": "5",
   "server": "proxy.example.com",
   "server_port": 1080,
   "reserve_port": 11200,
-  "username": "",
-  "password": ""
+  "username": "your-username",
+  "password": "your-password"
 }
 ```
 
 The installer restricts this file to Administrators and SYSTEM. To change the proxy later:
 
-1. Open **Start → IPRoyal SOCKS5 Enforcement → Edit Proxy Configuration**.
-2. Approve administrator access if Windows requests it.
+1. Open **Start → IPRoyal Automatic Proxy Enforcement → Manage Service**.
+2. Choose **Edit config.json** and approve administrator access.
 3. Save the edited file.
-4. Restart the service using **Manage Service**.
+4. Choose **Restart service**.
 
 The service does not live-reload this file; changes take effect after restart.
 
 ## Start, stop, restart, status, and logs
 
-Open **Start → IPRoyal SOCKS5 Enforcement → Manage Service**. The menu can start, stop, restart, display status, edit configuration, or open the service log. Windows requests administrator permission for service changes.
+Open **Start → IPRoyal Automatic Proxy Enforcement → Manage Service**. The menu can start, stop, restart, display status, edit configuration, or open the service log. Windows requests administrator permission for service changes.
 
 Administrators can alternatively use PowerShell:
 
@@ -106,16 +102,16 @@ The existing installed `config.json` is preserved by default. The installer disp
 
 Use either:
 
-- **Windows Settings → Apps → Installed apps → IPRoyal SOCKS5 Enforcement → Uninstall**, or
+- **Windows Settings → Apps → Installed apps → IPRoyal Automatic Proxy Enforcement → Uninstall**, or
 - **Control Panel → Programs and Features**.
 
 The standard uninstaller stops and unregisters only `IpRoyalProxyEnforcement`, removes installed application files and application-owned runtime logs, and leaves `config.json` in the installation directory for safe reuse. Delete that remaining file manually only when its stored credentials are no longer needed.
 
 ## Networking behavior
 
-When the proxy is healthy, ordinary IPv4/IPv6 application traffic and DNS use the enforced proxy path. Local loopback and private-network communication remain direct.
+When the proxy is healthy, ordinary IPv4/IPv6 application traffic and DNS use the selected enforced proxy path. SOCKS5 is always validated first on initial connection or re-evaluation; HTTP is attempted only after SOCKS5 fails. A working selection is retained until its health check fails.
 
-When the proxy is unavailable or authentication fails, captured Internet traffic stays blocked instead of silently falling back to a direct connection. The service checks recovery every 10 seconds and restores proxied traffic automatically.
+When neither SOCKS5 nor HTTP is usable or authentication fails, captured Internet traffic stays blocked instead of silently falling back to a direct connection. Protocol probes and switching occur inside the active strict tunnel, so fallback does not create a direct-connect bypass. The service checks recovery every 10 seconds and restores proxied traffic automatically.
 
 TCP/UDP RDP traffic on port 3389 and private/local destinations bypass proxy enforcement. This is intended to preserve existing and new RDP administration sessions. A custom RDP port is not automatically exempted and requires a routing-rule change before deployment.
 
@@ -125,7 +121,7 @@ An intentional service stop or uninstall removes transient networking state owne
 
 ### Installer rejects the proxy settings
 
-Confirm that the type is `socks`, version is `5`, the server is not empty, both ports are from 1 to 65535 and differ, and username/password are either both filled or both empty.
+Confirm that the server is not empty, the proxy port is from 1 to 65535, the reserved port is from 1 to 65533 and differs from the proxy port, and both username and password are present. Legacy Version 1 `type` and `version` fields may remain but do not control Version 2 protocol selection.
 
 ### Installation fails
 
@@ -133,7 +129,7 @@ Read the understandable error shown by the installer. Confirm administrator appr
 
 ### Proxy is unreachable or authentication fails
 
-Internet access is intentionally unavailable because enforcement is fail-closed. Check the hostname, port, optional credentials, firewall access to the proxy endpoint, and provider status. Correct `config.json`, then restart the service or wait for automatic recovery.
+Internet access is intentionally unavailable because enforcement is fail-closed. Check the hostname, port, credentials, firewall access to the proxy endpoint, and provider status. Logs show SOCKS5 and HTTP selection failures without printing the password. Correct `config.json`, then restart the service or wait for automatic recovery.
 
 ### Service does not start
 

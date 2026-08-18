@@ -1,5 +1,5 @@
 namespace IpRoyalService;
-public sealed class ProxyEnforcementWorker(ConfigLoader loader, EnforcementController enforcement, ProxyProbe probe, ILogger<ProxyEnforcementWorker> log, IHostApplicationLifetime lifetime) : BackgroundService
+public sealed class ProxyEnforcementWorker(ConfigLoader loader, EnforcementController enforcement, AutomaticProxySelector selector, ILogger<ProxyEnforcementWorker> log, IHostApplicationLifetime lifetime) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -13,23 +13,31 @@ public sealed class ProxyEnforcementWorker(ConfigLoader loader, EnforcementContr
         {
             try
             {
-                if (!enforcement.IsRunning) await enforcement.StartAsync(config, baseDir, stoppingToken);
-                var healthy = await probe.CheckAsync(config.ReservePort, stoppingToken);
-                if (healthy)
+                if (!enforcement.IsRunning)
                 {
-                    if (unhealthyLogged) log.LogInformation("Proxy connectivity recovered; proxied traffic is permitted again");
-                    else log.LogInformation("Proxy authenticated and usable; enforcement healthy");
+                    await enforcement.StartAsync(config, baseDir, stoppingToken);
+                    selector.Reset();
+                }
+                var protocol = await selector.EvaluateAsync(config.ReservePort, stoppingToken);
+                if (protocol is not null)
+                {
+                    if (unhealthyLogged) log.LogInformation("Proxy connectivity recovered using {Protocol}; proxied traffic is permitted again", protocol);
+                    else log.LogInformation("Authenticated proxy is usable via {Protocol}; enforcement healthy", protocol);
                     unhealthyLogged = false;
                 }
                 else
                 {
-                    if (!unhealthyLogged) log.LogError("Proxy health check failed; strict TUN routing remains fail-closed while RDP and private/local traffic remain direct");
+                    if (!unhealthyLogged) log.LogError("No supported proxy protocol is usable; strict TUN routing remains fail-closed while RDP and private/local traffic remain direct");
                     unhealthyLogged = true;
-                    if (!enforcement.IsRunning) await enforcement.StopAsync();
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception e) { log.LogError(e, "Enforcement cycle failed; retrying with exponential-safe fixed delay"); unhealthyLogged = true; await enforcement.StopAsync(); }
+            catch (Exception e)
+            {
+                log.LogError(e, "Enforcement cycle failed; strict routing remains active when possible and selection will retry");
+                unhealthyLogged = true;
+                if (!enforcement.IsRunning) await enforcement.StopAsync();
+            }
             await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
         }
     }

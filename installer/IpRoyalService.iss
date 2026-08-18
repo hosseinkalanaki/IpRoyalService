@@ -8,7 +8,7 @@
   #error OutputDir must be supplied by Build-Installer.ps1
 #endif
 
-#define MyAppName "IPRoyal SOCKS5 Enforcement"
+#define MyAppName "IPRoyal Automatic Proxy Enforcement"
 #define MyServiceName "IpRoyalProxyEnforcement"
 #define MyAppExeName "IpRoyalService.exe"
 
@@ -99,22 +99,18 @@ begin
 
   ConfigPage := CreateInputQueryPage(ExistingPage.ID,
     'Proxy configuration',
-    'Enter the SOCKS5 proxy used by the service.',
-    'The server and ports are required. Username and password are optional, but must either both be filled or both be empty. The password is not written to the installer log.');
-  ConfigPage.Add('Proxy type:', False);
-  ConfigPage.Add('Proxy version:', False);
+    'Enter the authenticated proxy used by the service.',
+    'The service automatically tries SOCKS5 first and HTTP second. All fields are required. The password is masked and is not written to the installer log.');
   ConfigPage.Add('Proxy server hostname or IP address:', False);
   ConfigPage.Add('Proxy server port:', False);
   ConfigPage.Add('Reserved/local port:', False);
-  ConfigPage.Add('Username (optional):', False);
-  ConfigPage.Add('Password (optional):', True);
-  ConfigPage.Values[0] := 'socks';
-  ConfigPage.Values[1] := '5';
-  ConfigPage.Values[2] := '';
-  ConfigPage.Values[3] := '1080';
-  ConfigPage.Values[4] := '11200';
-  ConfigPage.Values[5] := '';
-  ConfigPage.Values[6] := '';
+  ConfigPage.Add('Username:', False);
+  ConfigPage.Add('Password:', True);
+  ConfigPage.Values[0] := '';
+  ConfigPage.Values[1] := '1080';
+  ConfigPage.Values[2] := '11200';
+  ConfigPage.Values[3] := '';
+  ConfigPage.Values[4] := '';
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -138,26 +134,23 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
   if CurPageID <> ConfigPage.ID then Exit;
-  if CompareText(Trim(ConfigPage.Values[0]), 'socks') <> 0 then begin
-    MsgBox('Proxy type must be socks.', mbError, MB_OK); Result := False; Exit;
-  end;
-  if Trim(ConfigPage.Values[1]) <> '5' then begin
-    MsgBox('Proxy version must be 5.', mbError, MB_OK); Result := False; Exit;
-  end;
-  if Trim(ConfigPage.Values[2]) = '' then begin
+  if Trim(ConfigPage.Values[0]) = '' then begin
     MsgBox('Enter a proxy server hostname or IP address.', mbError, MB_OK); Result := False; Exit;
   end;
-  if not ValidPort(ConfigPage.Values[3]) then begin
+  if not ValidPort(ConfigPage.Values[1]) then begin
     MsgBox('Proxy server port must be a number from 1 to 65535.', mbError, MB_OK); Result := False; Exit;
   end;
-  if not ValidPort(ConfigPage.Values[4]) then begin
-    MsgBox('Reserved/local port must be a number from 1 to 65535.', mbError, MB_OK); Result := False; Exit;
+  if not ValidPort(ConfigPage.Values[2]) or (StrToIntDef(ConfigPage.Values[2], 0) > 65533) then begin
+    MsgBox('Reserved/local port must be a number from 1 to 65533.', mbError, MB_OK); Result := False; Exit;
   end;
-  if StrToIntDef(ConfigPage.Values[3], 0) = StrToIntDef(ConfigPage.Values[4], 0) then begin
+  if StrToIntDef(ConfigPage.Values[1], 0) = StrToIntDef(ConfigPage.Values[2], 0) then begin
     MsgBox('Reserved/local port must differ from the proxy server port.', mbError, MB_OK); Result := False; Exit;
   end;
-  if (Trim(ConfigPage.Values[5]) = '') <> (ConfigPage.Values[6] = '') then begin
-    MsgBox('Username and password must either both be filled or both be empty.', mbError, MB_OK); Result := False; Exit;
+  if Trim(ConfigPage.Values[3]) = '' then begin
+    MsgBox('Enter the proxy username.', mbError, MB_OK); Result := False; Exit;
+  end;
+  if ConfigPage.Values[4] = '' then begin
+    MsgBox('Enter the proxy password.', mbError, MB_OK); Result := False; Exit;
   end;
 end;
 
@@ -170,13 +163,11 @@ begin
   if ConfigurationExisted and (not LoadStringFromFile(ConfigPath, PreviousConfiguration)) then
     RaiseException('The existing config.json could not be read, so it was not replaced.');
   Content := '{' + #13#10 +
-    '  "type": "' + JsonEscape(Trim(ConfigPage.Values[0])) + '",' + #13#10 +
-    '  "version": "' + JsonEscape(Trim(ConfigPage.Values[1])) + '",' + #13#10 +
-    '  "server": "' + JsonEscape(Trim(ConfigPage.Values[2])) + '",' + #13#10 +
-    '  "server_port": ' + Trim(ConfigPage.Values[3]) + ',' + #13#10 +
-    '  "reserve_port": ' + Trim(ConfigPage.Values[4]) + ',' + #13#10 +
-    '  "username": "' + JsonEscape(ConfigPage.Values[5]) + '",' + #13#10 +
-    '  "password": "' + JsonEscape(ConfigPage.Values[6]) + '"' + #13#10 + '}' + #13#10;
+    '  "server": "' + JsonEscape(Trim(ConfigPage.Values[0])) + '",' + #13#10 +
+    '  "server_port": ' + Trim(ConfigPage.Values[1]) + ',' + #13#10 +
+    '  "reserve_port": ' + Trim(ConfigPage.Values[2]) + ',' + #13#10 +
+    '  "username": "' + JsonEscape(ConfigPage.Values[3]) + '",' + #13#10 +
+    '  "password": "' + JsonEscape(ConfigPage.Values[4]) + '"' + #13#10 + '}' + #13#10;
   if not SaveStringToFile(ConfigPath, Content, False) then
     RaiseException('Windows could not create config.json in the installation directory.');
   ConfigurationCreated := True;
@@ -238,7 +229,7 @@ begin
     Parameters := 'create {#MyServiceName} binPath= "' + ExpandConstant('{app}\{#MyAppExeName}') + '" start= auto DisplayName= "{#MyAppName}"';
   if (not RunSc(Parameters, ResultCode)) or (ResultCode <> 0) then
     RaiseException('Windows could not register the service.');
-  RunSc('description {#MyServiceName} "System-wide SOCKS5 enforcement with strict TUN routing and RDP exemption."', ResultCode);
+  RunSc('description {#MyServiceName} "System-wide automatic SOCKS5/HTTP proxy enforcement with strict TUN routing and RDP exemption."', ResultCode);
   RunSc('failure {#MyServiceName} reset= 86400 actions= restart/5000/restart/15000/restart/60000', ResultCode);
   RunSc('failureflag {#MyServiceName} 1', ResultCode);
   if (not RunSc('start {#MyServiceName}', ResultCode)) or (ResultCode <> 0) then begin

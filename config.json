@@ -1,6 +1,4 @@
 {
-    "type": "socks",
-    "version": "5",
     "server": "",
     "server_port": 1080,
     "reserve_port": 11200,
