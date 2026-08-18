@@ -22,6 +22,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0.17763
 PrivilegesRequired=admin
 OutputDir={#OutputDir}
 OutputBaseFilename=IpRoyalService-v{#MyAppVersion}-win-x64-Setup
@@ -45,8 +46,6 @@ Source: "{#StageDir}\engine\sing-box.exe"; DestDir: "{app}\engine"; Flags: ignor
 
 [Icons]
 Name: "{group}\Manage Service"; Filename: "{app}\Manage-Service.cmd"; WorkingDir: "{app}"
-Name: "{group}\Edit Proxy Configuration"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\config.json"""
-Name: "{group}\User Guide"; Filename: "{app}\USER-GUIDE.md"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 [UninstallDelete]

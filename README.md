@@ -16,6 +16,8 @@ IpRoyalService-vX.Y.Z-win-x64-Setup.exe
 
 This is the primary end-user download for 64-bit Intel/AMD Windows. Do not download GitHub's automatically generated “Source code” archives. The installer contains the service, private .NET runtime, packet engine, configuration wizard, and service-management shortcut; Visual Studio, the .NET SDK, and programming knowledge are not required.
 
+Supported systems are x64-compatible Windows 10 version 1809 or newer and Windows 11. Unsupported Windows versions or processor architectures are rejected by setup with a clear message. The installer uses normal Windows UAC and standard built-in service/security commands; it does not require Microsoft Store applications, file associations, PowerShell modules, or an interactive login after installation.
+
 An adjacent `.sha256` file is provided for optional download verification.
 
 ### 2. Run the installer
@@ -165,7 +167,7 @@ Tests do not modify live networking.
 
 ### Build an installer locally
 
-Install Inno Setup 6, obtain the pinned/trusted sing-box Windows AMD64 ZIP, then run:
+Install Inno Setup 6.7.1 (the version pinned by CI), obtain the pinned/trusted sing-box Windows AMD64 ZIP, then run:
 
 ```powershell
 .\build\Build-Installer.ps1 `
@@ -181,6 +183,8 @@ artifacts\installer\IpRoyalService-v1.0.0-win-x64-Setup.exe.sha256
 ```
 
 The script publishes a self-contained single-file x64 service, stages only runtime/user files, compiles the installer, and generates a checksum. `config.json` is not embedded as a fixed file; the installer creates it from validated wizard input and preserves an installed copy during upgrades unless replacement is explicitly selected.
+
+`installer\IpRoyalService.iss` is source code used only by maintainers and GitHub Actions. Normal users must never download, open, or try to execute the `.iss` file; only the compiled `*-Setup.exe` from GitHub Releases is installable.
 
 ### Publish a GitHub Release
 
