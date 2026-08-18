@@ -1,6 +1,6 @@
 # IPRoyal Automatic Proxy Enforcement Service
 
-This Windows Service routes ordinary system-wide IPv4 and IPv6 traffic through an authenticated proxy. It validates SOCKS5 first and automatically falls back to HTTP when SOCKS5 is unavailable. Browsers and other applications do not need individual proxy settings.
+This package installs a Windows Service that routes ordinary system-wide IPv4 and IPv6 traffic through an authenticated proxy, plus a compact Windows control application for configuration, connection status, service controls, and logs. It validates SOCKS5 first and automatically falls back to HTTP when SOCKS5 is unavailable. Browsers and other applications do not need individual proxy settings.
 
 > **Safety warning:** first test proxy failure, recovery, DNS, reboot, and both existing and new RDP connections on a disposable Windows machine with console access.
 
@@ -14,7 +14,7 @@ Open the project's GitHub **Releases** page and download:
 IpRoyalService-vX.Y.Z-win-x64-Setup.exe
 ```
 
-This is the primary end-user download for 64-bit Intel/AMD Windows. Do not download GitHub's automatically generated “Source code” archives. The installer contains the service, private .NET runtime, packet engine, configuration wizard, and service-management shortcut; Visual Studio, the .NET SDK, and programming knowledge are not required.
+This is the primary end-user download for 64-bit Intel/AMD Windows. Do not download GitHub's automatically generated “Source code” archives. The installer contains the service, Windows control application, private .NET runtimes, packet engine, and configuration wizard; Visual Studio, the .NET SDK, and programming knowledge are not required.
 
 Supported systems are x64-compatible Windows 10 version 1809 or newer and Windows 11. Unsupported Windows versions or processor architectures are rejected by setup with a clear message. The installer uses normal Windows UAC and standard built-in service/security commands; it does not require Microsoft Store applications, file associations, PowerShell modules, or an interactive login after installation.
 
@@ -28,7 +28,19 @@ An adjacent `.sha256` file is provided for optional download verification.
 4. Enter the proxy settings described below.
 5. Select **Install**.
 
-After a successful clean installation, the installer registers the `IpRoyalProxyEnforcement` Windows Service for automatic startup and starts it immediately. Installation failures are reported and a newly created, broken service registration is removed.
+After a successful clean installation, the installer registers the `IpRoyalProxyEnforcement` Windows Service for automatic startup, starts it immediately, and offers to open **IPRoyal Proxy Control**. Installation failures are reported and a newly created, broken service registration is removed.
+
+## Use IPRoyal Proxy Control
+
+Open **Start → IPRoyal Automatic Proxy Enforcement → IPRoyal Proxy Control**, or use the optional desktop shortcut selected during setup. Approve the administrator prompt: Windows requires elevation to control the service and update its protected configuration.
+
+The top panel shows the actual Windows Service state and one of **Disconnected**, **Connecting**, **Connected**, or **Connection error / fail-closed**. A running service is not shown as connected unless the service has published a recent successful outbound proxy validation. When connected, the selected **SOCKS5** or **HTTP** protocol is displayed. Status and logs refresh automatically every three seconds.
+
+To change settings, edit the proxy server, server port, username, password, and reserved/local port, then select **Save configuration and restart**. The controller validates and updates the same installed `config.json` used by the service; it does not create another configuration or proxy connection. There is no protocol selector because selection remains automatic.
+
+Use **Start / Connect**, **Stop / Disconnect**, or **Restart / Reconnect** to control the real Windows Service. Stopping the service intentionally removes the application-owned TUN state and returns networking to the existing direct-network behavior described below; it does not silently disable enforcement while the service is running.
+
+The built-in log viewer efficiently displays the latest service log entries and refreshes automatically. **Clear displayed view** clears only the window, not the on-disk service log. Password and common authentication representations are redacted before display.
 
 ## Proxy settings requested by the installer
 
@@ -62,18 +74,11 @@ If a different installation directory was selected, `config.json` is beside `IpR
 }
 ```
 
-The installer restricts this file to Administrators and SYSTEM. To change the proxy later:
-
-1. Open **Start → IPRoyal Automatic Proxy Enforcement → Manage Service**.
-2. Choose **Edit config.json** and approve administrator access.
-3. Save the edited file.
-4. Choose **Restart service**.
-
-The service does not live-reload this file; changes take effect after restart.
+The installer restricts this file to Administrators and SYSTEM. The control application is the preferred way to change these values. Manual editing remains supported: open the file with an elevated editor, save it, then restart the service using the control application. The service does not live-reload this file.
 
 ## Start, stop, restart, status, and logs
 
-Open **Start → IPRoyal Automatic Proxy Enforcement → Manage Service**. The menu can start, stop, restart, display status, edit configuration, or open the service log. Windows requests administrator permission for service changes.
+Open **IPRoyal Proxy Control** from the Start menu. The legacy **Advanced Service Menu** shortcut remains available as a command-line fallback. Windows requests administrator permission for protected changes.
 
 Administrators can alternatively use PowerShell:
 
@@ -133,11 +138,11 @@ Internet access is intentionally unavailable because enforcement is fail-closed.
 
 ### Service does not start
 
-Use **Manage Service → Show service status** and inspect `C:\ProgramData\IpRoyalService\service.log`. Configuration problems are reported without printing the password. Re-run the installer if `IpRoyalService.exe` or `engine\sing-box.exe` is missing.
+Open **IPRoyal Proxy Control** and inspect its connection state and built-in log viewer, or read `C:\ProgramData\IpRoyalService\service.log`. Configuration problems are reported without printing the password. Re-run the installer if `IpRoyalService.exe`, `IpRoyalControl.exe`, or `engine\sing-box.exe` is missing.
 
 ### Emergency recovery
 
-From local or console access, open **Manage Service** and choose **Stop service**. This intentionally stops the packet engine and removes its temporary routing state.
+From local or console access, open **IPRoyal Proxy Control** and select **Stop / Disconnect**. This intentionally stops the packet engine and removes its temporary routing state.
 
 ## Technical limitation
 
@@ -178,7 +183,7 @@ artifacts\installer\IpRoyalService-v1.0.0-win-x64-Setup.exe
 artifacts\installer\IpRoyalService-v1.0.0-win-x64-Setup.exe.sha256
 ```
 
-The script publishes a self-contained single-file x64 service, stages only runtime/user files, compiles the installer, and generates a checksum. `config.json` is not embedded as a fixed file; the installer creates it from validated wizard input and preserves an installed copy during upgrades unless replacement is explicitly selected.
+The script publishes self-contained single-file x64 service and control executables, stages only runtime/user files, compiles the installer, and generates a checksum. `config.json` is not embedded as a fixed file; the installer creates it from validated wizard input and preserves an installed copy during upgrades unless replacement is explicitly selected.
 
 `installer\IpRoyalService.iss` is source code used only by maintainers and GitHub Actions. Normal users must never download, open, or try to execute the `.iss` file; only the compiled `*-Setup.exe` from GitHub Releases is installable.
 

@@ -11,6 +11,7 @@
 #define MyAppName "IPRoyal Automatic Proxy Enforcement"
 #define MyServiceName "IpRoyalProxyEnforcement"
 #define MyAppExeName "IpRoyalService.exe"
+#define MyControlExeName "IpRoyalControl.exe"
 
 [Setup]
 AppId={{B8A75DA4-A68B-46C6-AE2B-E4E785C058E0}
@@ -39,18 +40,29 @@ ChangesEnvironment=no
 
 [Files]
 Source: "{#StageDir}\IpRoyalService.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StageDir}\IpRoyalControl.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\Manage-Service.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\USER-GUIDE.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\SING-BOX-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#StageDir}\engine\sing-box.exe"; DestDir: "{app}\engine"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Manage Service"; Filename: "{app}\Manage-Service.cmd"; WorkingDir: "{app}"
+Name: "{group}\IPRoyal Proxy Control"; Filename: "{app}\{#MyControlExeName}"; WorkingDir: "{app}"
+Name: "{group}\Advanced Service Menu"; Filename: "{app}\Manage-Service.cmd"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\IPRoyal Proxy Control"; Filename: "{app}\{#MyControlExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+
+[Run]
+Filename: "{app}\{#MyControlExeName}"; Description: "Open IPRoyal Proxy Control"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]
 Type: files; Name: "{commonappdata}\IpRoyalService\engine.json"
 Type: files; Name: "{commonappdata}\IpRoyalService\service.log"
+Type: files; Name: "{commonappdata}\IpRoyalService\status.json"
+Type: files; Name: "{commonappdata}\IpRoyalService\status.json.tmp"
 Type: dirifempty; Name: "{commonappdata}\IpRoyalService"
 
 [Code]

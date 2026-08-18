@@ -1,8 +1,10 @@
-## IPRoyal Automatic Proxy Enforcement v2
+## IPRoyal Automatic Proxy Enforcement v2.1
 
-Download **`IpRoyalService-v2.0.0-win-x64-Setup.exe`**, run it, approve the administrator prompt, and enter the proxy server, port, username, password, and reserved/local port. The installer no longer asks for a protocol.
+Download **`IpRoyalService-v2.1.0-win-x64-Setup.exe`**, run it, approve the administrator prompt, and enter the proxy server, port, username, password, and reserved/local port. The installer does not ask for a protocol.
 
 Version 2 validates SOCKS5 first and automatically falls back to HTTP with the same credentials. When neither protocol is usable, strict fail-closed enforcement keeps ordinary outbound Internet traffic blocked while the existing RDP exemption remains active.
+
+The installer also includes **IPRoyal Proxy Control**, a lightweight Windows desktop application for editing the installed configuration, controlling the service, seeing validated connection state and selected protocol, and viewing recent redacted service logs. Open it from the Start menu after installation.
 
 The installer supports x64-compatible Windows 10 version 1809 or newer and Windows 11 VPS installations. It contains the .NET runtime and packet engine; no development tools or Microsoft Store applications are required.
 

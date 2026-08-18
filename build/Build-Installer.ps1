@@ -20,16 +20,20 @@ if (-not (Test-Path -LiteralPath $InnoCompiler)) {
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') { throw 'Version must be a semantic version such as 1.2.3.' }
 
-$publish = Join-Path $artifacts 'publish-win-x64'
+$servicePublish = Join-Path $artifacts 'publish-service-win-x64'
+$controlPublish = Join-Path $artifacts 'publish-control-win-x64'
 $stage = Join-Path $artifacts 'installer-stage-win-x64'
 $output = Join-Path $artifacts 'installer'
-foreach ($path in @($publish, $stage, $output)) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force } }
+foreach ($path in @($servicePublish, $controlPublish, $stage, $output)) { if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force } }
 
-dotnet publish (Join-Path $root 'src\IpRoyalService\IpRoyalService.csproj') -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $publish
-if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
+dotnet publish (Join-Path $root 'src\IpRoyalService\IpRoyalService.csproj') -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $servicePublish
+if ($LASTEXITCODE -ne 0) { throw 'service publish failed.' }
+dotnet publish (Join-Path $root 'src\IpRoyalControl\IpRoyalControl.csproj') -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o $controlPublish
+if ($LASTEXITCODE -ne 0) { throw 'control application publish failed.' }
 
 New-Item -ItemType Directory -Path (Join-Path $stage 'engine') -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $publish 'IpRoyalService.exe') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $servicePublish 'IpRoyalService.exe') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $controlPublish 'IpRoyalControl.exe') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $stage 'USER-GUIDE.md')
 Copy-Item -LiteralPath (Join-Path $root 'deploy\Manage-Service.cmd') -Destination $stage
 
@@ -45,7 +49,7 @@ try {
 }
 finally { Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue }
 
-$expected = @('IpRoyalService.exe','USER-GUIDE.md','Manage-Service.cmd','engine\sing-box.exe')
+$expected = @('IpRoyalService.exe','IpRoyalControl.exe','USER-GUIDE.md','Manage-Service.cmd','engine\sing-box.exe')
 foreach ($relative in $expected) { if (-not (Test-Path -LiteralPath (Join-Path $stage $relative))) { throw "Installer staging failed: $relative is missing." } }
 $unexpected = Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Extension -in @('.cs','.csproj','.pdb','.json') }
 if ($unexpected) { throw 'Installer staging contains source, symbols, or a prebuilt configuration file.' }

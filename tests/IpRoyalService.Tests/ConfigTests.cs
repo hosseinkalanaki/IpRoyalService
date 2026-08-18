@@ -82,5 +82,8 @@ public sealed class ConfigTests
         Assert.Contains("Result := (not FileExists(ConfigPath)) or ExistingConfigurationWillBeReplaced;", source, StringComparison.Ordinal);
         Assert.Contains("RunSc('stop {#MyServiceName}'", source, StringComparison.Ordinal);
         Assert.Contains("RunSc('delete {#MyServiceName}'", source, StringComparison.Ordinal);
+        Assert.Contains("Source: \"{#StageDir}\\IpRoyalControl.exe\"", source, StringComparison.Ordinal);
+        Assert.Contains("Name: \"{group}\\IPRoyal Proxy Control\"", source, StringComparison.Ordinal);
+        Assert.Contains("Flags: postinstall nowait skipifsilent", source, StringComparison.Ordinal);
     }
 }
