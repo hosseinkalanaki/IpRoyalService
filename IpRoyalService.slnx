@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/IpRoyalService/IpRoyalService.csproj" />
+  <Project Path="tests/IpRoyalService.Tests/IpRoyalService.Tests.csproj" />
+</Solution>
