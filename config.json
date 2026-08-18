@@ -1,0 +1,9 @@
+{
+    "type": "socks",
+    "version": "5",
+    "server": "geo.iproyal.com",
+    "server_port": 12321,
+    "reserve_port": 11200,
+    "username": "VerifyNoExpire",
+    "password": "Verify1234_country-gb_city-london_session-2wuC93ZA_lifetime-168h"
+}
