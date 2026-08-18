@@ -61,6 +61,7 @@ Filename: "{app}\{#MyControlExeName}"; Description: "Open IPRoyal Proxy Control"
 [UninstallDelete]
 Type: files; Name: "{commonappdata}\IpRoyalService\engine.json"
 Type: files; Name: "{commonappdata}\IpRoyalService\service.log"
+Type: files; Name: "{commonappdata}\IpRoyalService\engine-debug.log"
 Type: files; Name: "{commonappdata}\IpRoyalService\status.json"
 Type: files; Name: "{commonappdata}\IpRoyalService\status.json.tmp"
 Type: dirifempty; Name: "{commonappdata}\IpRoyalService"
@@ -68,6 +69,7 @@ Type: dirifempty; Name: "{commonappdata}\IpRoyalService"
 [Code]
 var
   ConfigPage: TInputQueryWizardPage;
+  ProtocolPage: TInputOptionWizardPage;
   ExistingPage: TInputOptionWizardPage;
   ConfigurationCreated: Boolean;
   ServicePreExisting: Boolean;
@@ -99,6 +101,13 @@ begin
   Result := (not FileExists(ConfigPath)) or ExistingConfigurationWillBeReplaced;
 end;
 
+function SelectedProtocol: String;
+begin
+  if ProtocolPage.Values[0] then Result := 'HTTP'
+  else if ProtocolPage.Values[1] then Result := 'SOCKS4'
+  else Result := 'SOCKS5';
+end;
+
 procedure InitializeWizard;
 begin
   ExistingPage := CreateInputOptionPage(wpSelectDir,
@@ -109,10 +118,18 @@ begin
   ExistingPage.Add('Replace my existing config.json');
   ExistingPage.Values[0] := False;
 
-  ConfigPage := CreateInputQueryPage(ExistingPage.ID,
+  ProtocolPage := CreateInputOptionPage(ExistingPage.ID,
+    'Proxy protocol', 'Select the protocol supported by your proxy endpoint.',
+    'The service uses only the selected protocol and does not fall back automatically.', True, False);
+  ProtocolPage.Add('HTTP');
+  ProtocolPage.Add('SOCKS4');
+  ProtocolPage.Add('SOCKS5');
+  ProtocolPage.SelectedValueIndex := 2;
+
+  ConfigPage := CreateInputQueryPage(ProtocolPage.ID,
     'Proxy configuration',
     'Enter the authenticated proxy used by the service.',
-    'The service automatically tries SOCKS5 first and HTTP second. All fields are required. The password is masked and is not written to the installer log.');
+    'Enter the endpoint settings. SOCKS4 uses the username as its user ID and does not use the password. The password is masked and is not written to the installer log.');
   ConfigPage.Add('Proxy server hostname or IP address:', False);
   ConfigPage.Add('Proxy server port:', False);
   ConfigPage.Add('Reserved/local port:', False);
@@ -130,6 +147,8 @@ begin
   Result := False;
   if PageID = ExistingPage.ID then
     Result := not FileExists(ConfigPath)
+  else if PageID = ProtocolPage.ID then
+    Result := not ShouldCreateConfiguration
   else if PageID = ConfigPage.ID then
     Result := not ShouldCreateConfiguration;
 end;
@@ -158,12 +177,6 @@ begin
   if StrToIntDef(ConfigPage.Values[1], 0) = StrToIntDef(ConfigPage.Values[2], 0) then begin
     MsgBox('Reserved/local port must differ from the proxy server port.', mbError, MB_OK); Result := False; Exit;
   end;
-  if Trim(ConfigPage.Values[3]) = '' then begin
-    MsgBox('Enter the proxy username.', mbError, MB_OK); Result := False; Exit;
-  end;
-  if ConfigPage.Values[4] = '' then begin
-    MsgBox('Enter the proxy password.', mbError, MB_OK); Result := False; Exit;
-  end;
 end;
 
 procedure WriteConfiguration;
@@ -175,6 +188,7 @@ begin
   if ConfigurationExisted and (not LoadStringFromFile(ConfigPath, PreviousConfiguration)) then
     RaiseException('The existing config.json could not be read, so it was not replaced.');
   Content := '{' + #13#10 +
+    '  "protocol": "' + SelectedProtocol + '",' + #13#10 +
     '  "server": "' + JsonEscape(Trim(ConfigPage.Values[0])) + '",' + #13#10 +
     '  "server_port": ' + Trim(ConfigPage.Values[1]) + ',' + #13#10 +
     '  "reserve_port": ' + Trim(ConfigPage.Values[2]) + ',' + #13#10 +
@@ -241,7 +255,7 @@ begin
     Parameters := 'create {#MyServiceName} binPath= "' + ExpandConstant('{app}\{#MyAppExeName}') + '" start= auto DisplayName= "{#MyAppName}"';
   if (not RunSc(Parameters, ResultCode)) or (ResultCode <> 0) then
     RaiseException('Windows could not register the service.');
-  RunSc('description {#MyServiceName} "System-wide automatic SOCKS5/HTTP proxy enforcement with strict TUN routing and RDP exemption."', ResultCode);
+  RunSc('description {#MyServiceName} "System-wide HTTP/SOCKS4/SOCKS5 proxy enforcement with strict TUN routing and RDP exemption."', ResultCode);
   RunSc('failure {#MyServiceName} reset= 86400 actions= restart/5000/restart/15000/restart/60000', ResultCode);
   RunSc('failureflag {#MyServiceName} 1', ResultCode);
   if (not RunSc('start {#MyServiceName}', ResultCode)) or (ResultCode <> 0) then begin

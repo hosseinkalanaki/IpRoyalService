@@ -13,7 +13,7 @@ public sealed class ConnectionStatusPublisher(ILogger<ConnectionStatusPublisher>
             Directory.CreateDirectory(ApplicationPaths.DataDirectory);
             var status = new ConnectionStatus(
                 state,
-                protocol is ProxyProtocol.Socks5 ? "SOCKS5" : protocol is ProxyProtocol.Http ? "HTTP" : null,
+                protocol?.ToConfigValue(),
                 message,
                 DateTimeOffset.UtcNow);
             var temporary = ApplicationPaths.StatusFile + ".tmp";

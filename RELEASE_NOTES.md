@@ -1,13 +1,11 @@
-## IPRoyal Automatic Proxy Enforcement v2.1
+## IPRoyal Automatic Proxy Enforcement v2.4.0
 
-Download **`IpRoyalService-v2.1.0-win-x64-Setup.exe`**, run it, approve the administrator prompt, and enter the proxy server, port, username, password, and reserved/local port. The installer does not ask for a protocol.
+For Windows 10/11 x64 VPS systems, download **`IpRoyalService-v2.4.0-win-x64-Setup.exe`**. This is the installer; the `.sha256` file is only for checksum verification.
 
-Version 2 validates SOCKS5 first and automatically falls back to HTTP with the same credentials. When neither protocol is usable, strict fail-closed enforcement keeps ordinary outbound Internet traffic blocked while the existing RDP exemption remains active.
+Version 2.4.0 adds explicit HTTP, SOCKS4, and SOCKS5 selection in both setup and IPRoyal Proxy Control. The service configures and validates only the selected protocol—there is no automatic fallback. SOCKS4 uses its protocol-specific user ID behavior; SOCKS5 and HTTP use their supported authentication fields.
 
-The installer also includes **IPRoyal Proxy Control**, a lightweight Windows desktop application for editing the installed configuration, controlling the service, seeing validated connection state and selected protocol, and viewing recent redacted service logs. Open it from the Start menu after installation.
+Connection status now distinguishes invalid configuration, authentication failure, unreachable or timed-out proxies, connection loss, reconnecting, fail-closed proxy unavailability, and service errors. Normal TUN, DNS, and RDP-direct packet activity is removed from the user log, ANSI control sequences are stripped, and detailed redacted engine output remains in `C:\ProgramData\IpRoyalService\engine-debug.log` for diagnosis.
 
-The installer supports x64-compatible Windows 10 version 1809 or newer and Windows 11 VPS installations. It contains the .NET runtime and packet engine; no development tools or Microsoft Store applications are required.
+Strict fail-closed IPv4/IPv6 and DNS enforcement remains active whenever the selected proxy is unavailable, while the existing RDP exemption remains active. The self-contained installer includes the Windows Service, control application, .NET runtime, and packet engine.
 
-Upgrading from Version 1 preserves the existing `C:\Program Files\IpRoyalService\config.json` and credentials unless **Replace my existing config.json** is explicitly selected. Legacy `type` and `version` fields are accepted but ignored because selection is automatic.
-
-Uninstall through **Settings → Apps → Installed apps** or **Control Panel → Programs and Features**. The service is stopped and removed automatically; `config.json` is preserved for a future reinstall.
+Upgrades preserve the installed `config.json` by default. Legacy configurations with a valid HTTP or SOCKS version are migrated; configurations without a determinable protocol show an actionable error and can be corrected in IPRoyal Proxy Control without losing endpoint or credential values.

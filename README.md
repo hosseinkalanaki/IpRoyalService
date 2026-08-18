@@ -1,6 +1,6 @@
 # IPRoyal Automatic Proxy Enforcement Service
 
-This package installs a Windows Service that routes ordinary system-wide IPv4 and IPv6 traffic through an authenticated proxy, plus a compact Windows control application for configuration, connection status, service controls, and logs. It validates SOCKS5 first and automatically falls back to HTTP when SOCKS5 is unavailable. Browsers and other applications do not need individual proxy settings.
+This package installs a Windows Service that routes ordinary system-wide IPv4 and IPv6 traffic through a user-selected HTTP, SOCKS4, or SOCKS5 proxy, plus a compact Windows control application for configuration, connection status, service controls, and logs. Browsers and other applications do not need individual proxy settings.
 
 > **Safety warning:** first test proxy failure, recovery, DNS, reboot, and both existing and new RDP connections on a disposable Windows machine with console access.
 
@@ -34,9 +34,9 @@ After a successful clean installation, the installer registers the `IpRoyalProxy
 
 Open **Start → IPRoyal Automatic Proxy Enforcement → IPRoyal Proxy Control**, or use the optional desktop shortcut selected during setup. Approve the administrator prompt: Windows requires elevation to control the service and update its protected configuration.
 
-The top panel shows the actual Windows Service state and one of **Disconnected**, **Connecting**, **Connected**, or **Connection error / fail-closed**. A running service is not shown as connected unless the service has published a recent successful outbound proxy validation. When connected, the selected **SOCKS5** or **HTTP** protocol is displayed. Status and logs refresh automatically every three seconds.
+The top panel shows the actual service and validated connection state, including stopped, connecting, connected, authentication failed, proxy unreachable, invalid configuration, connection lost, reconnecting, fail-closed proxy unavailable, and service error. A running service is not shown as connected until usable outbound proxy traffic succeeds. The selected HTTP, SOCKS4, or SOCKS5 protocol is displayed.
 
-To change settings, edit the proxy server, server port, username, password, and reserved/local port, then select **Save configuration and restart**. The controller validates and updates the same installed `config.json` used by the service; it does not create another configuration or proxy connection. There is no protocol selector because selection remains automatic.
+To change settings, select HTTP, SOCKS4, or SOCKS5; edit the server, ports, username, and password; then select **Save configuration and restart**. The service uses only that protocol and never silently falls back. Values are preserved when switching protocols. SOCKS4 uses the username as its user ID and does not use the password; HTTP and SOCKS5 pass their supported authentication fields.
 
 Use **Start / Connect**, **Stop / Disconnect**, or **Restart / Reconnect** to control the real Windows Service. Stopping the service intentionally removes the application-owned TUN state and returns networking to the existing direct-network behavior described below; it does not silently disable enforcement while the service is running.
 
@@ -46,13 +46,14 @@ The built-in log viewer efficiently displays the latest service log entries and 
 
 | Setting | Required value |
 |---|---|
+| Protocol | Exactly one of HTTP, SOCKS4, or SOCKS5 |
 | Proxy server | Provider hostname or IP address; required |
 | Proxy server port | Provider port from 1 to 65535; default `1080` |
 | Reserved/local port | Base of three unused loopback ports; default `11200` |
-| Username | Proxy username; required for a clean Version 2 installation |
-| Password | Proxy password; required and masked in the installer |
+| Username | Optional authentication username; SOCKS4 user ID |
+| Password | Optional and masked; not used by SOCKS4 |
 
-The installer does not ask for a protocol. It uses the same endpoint and credentials to validate SOCKS5 first, then HTTP only if SOCKS5 fails. The reserved/local port must be from 1 to 65533 and differ from the proxy server port; it and the next two ports are loopback-only health/control endpoints. The password is held only long enough to create the configuration and is not passed through installer command-line arguments or deliberately written to installer/service logs.
+The installer asks for the protocol and writes it to the same `config.json` used by the controller and service. The reserved/local port is a loopback-only validation endpoint and must differ from the proxy server port. Passwords are not passed through command-line arguments or deliberately written to logs.
 
 ## Configuration after installation
 
@@ -66,6 +67,7 @@ If a different installation directory was selected, `config.json` is beside `IpR
 
 ```json
 {
+  "protocol": "SOCKS5",
   "server": "proxy.example.com",
   "server_port": 1080,
   "reserve_port": 11200,
@@ -116,7 +118,7 @@ The standard uninstaller stops and unregisters only `IpRoyalProxyEnforcement`, r
 
 When the proxy is healthy, ordinary IPv4/IPv6 application traffic and DNS use the selected enforced proxy path. SOCKS5 is always validated first on initial connection or re-evaluation; HTTP is attempted only after SOCKS5 fails. A working selection is retained until its health check fails.
 
-When neither SOCKS5 nor HTTP is usable or authentication fails, captured Internet traffic stays blocked instead of silently falling back to a direct connection. Protocol probes and switching occur inside the active strict tunnel, so fallback does not create a direct-connect bypass. The service checks recovery every 10 seconds and restores proxied traffic automatically.
+When the selected protocol is unusable or authentication fails, captured Internet traffic stays blocked instead of falling back to another protocol or a direct connection. Validation occurs through the selected proxy inside active strict enforcement. The service retries every 10 seconds and restores traffic only after usable outbound traffic validates.
 
 TCP/UDP RDP traffic on port 3389 and private/local destinations bypass proxy enforcement. This is intended to preserve existing and new RDP administration sessions. A custom RDP port is not automatically exempted and requires a routing-rule change before deployment.
 
@@ -126,7 +128,7 @@ An intentional service stop or uninstall removes transient networking state owne
 
 ### Installer rejects the proxy settings
 
-Confirm that the server is not empty, the proxy port is from 1 to 65535, the reserved port is from 1 to 65533 and differs from the proxy port, and both username and password are present. Legacy Version 1 `type` and `version` fields may remain but do not control Version 2 protocol selection.
+Confirm that a protocol is selected, the server is not empty, both ports are from 1 to 65535, and the ports differ. Older HTTP/SOCKS version fields are migrated when unambiguous; otherwise select a protocol in the controller and save without losing the other values.
 
 ### Installation fails
 
@@ -134,7 +136,9 @@ Read the understandable error shown by the installer. Confirm administrator appr
 
 ### Proxy is unreachable or authentication fails
 
-Internet access is intentionally unavailable because enforcement is fail-closed. Check the hostname, port, credentials, firewall access to the proxy endpoint, and provider status. Logs show SOCKS5 and HTTP selection failures without printing the password. Correct `config.json`, then restart the service or wait for automatic recovery.
+Internet access is intentionally unavailable because enforcement is fail-closed. The status distinguishes known authentication, reachability, timeout, configuration, and service failures. Check the selected protocol against the provider, then verify hostname, port, credentials, firewall access, and provider status.
+
+The GUI log contains concise operational events and filters repetitive TUN/DNS/RDP packet messages. Detailed redacted engine diagnostics are stored separately at `C:\ProgramData\IpRoyalService\engine-debug.log`; inspect that file before sharing it.
 
 ### Service does not start
 
@@ -172,15 +176,15 @@ Install Inno Setup 6.7.1 (the version pinned by CI), obtain the pinned/trusted s
 
 ```powershell
 .\build\Build-Installer.ps1 `
-  -Version 1.0.0 `
+  -Version 2.4.0 `
   -SingBoxZip C:\staging\sing-box-windows-amd64.zip
 ```
 
 Output:
 
 ```text
-artifacts\installer\IpRoyalService-v1.0.0-win-x64-Setup.exe
-artifacts\installer\IpRoyalService-v1.0.0-win-x64-Setup.exe.sha256
+artifacts\installer\IpRoyalService-v2.4.0-win-x64-Setup.exe
+artifacts\installer\IpRoyalService-v2.4.0-win-x64-Setup.exe.sha256
 ```
 
 The script publishes self-contained single-file x64 service and control executables, stages only runtime/user files, compiles the installer, and generates a checksum. `config.json` is not embedded as a fixed file; the installer creates it from validated wizard input and preserves an installed copy during upgrades unless replacement is explicitly selected.

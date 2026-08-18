@@ -7,6 +7,7 @@ public sealed class MainForm : Form
 {
     private readonly ControlConfigStore store = new(Path.Combine(AppContext.BaseDirectory, "config.json"));
     private readonly TextBox server = new();
+    private readonly ComboBox protocol = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown serverPort = NumberInput(1, 65535, 1080);
     private readonly TextBox username = new();
     private readonly TextBox password = new() { UseSystemPasswordChar = true };
@@ -30,6 +31,7 @@ public sealed class MainForm : Form
         Size = new Size(900, 720);
         Font = new Font("Segoe UI", 9);
         Icon = SystemIcons.Shield;
+        protocol.Items.AddRange(new object[] { "HTTP", "SOCKS4", "SOCKS5" });
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), RowCount = 4, ColumnCount = 1 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -64,13 +66,13 @@ public sealed class MainForm : Form
         var grid = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Padding = new Padding(8) };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
-        AddField(grid, 0, "Proxy server", server); AddField(grid, 0, "Server port", serverPort, 2);
-        AddField(grid, 1, "Username", username); AddField(grid, 1, "Password", password, 2);
-        AddField(grid, 2, "Reserved/local port", reservePort);
+        AddField(grid, 0, "Protocol", protocol); AddField(grid, 0, "Proxy server", server, 2);
+        AddField(grid, 1, "Server port", serverPort); AddField(grid, 1, "Reserved/local port", reservePort, 2);
+        AddField(grid, 2, "Username / SOCKS4 user ID", username); AddField(grid, 2, "Password (not used by SOCKS4)", password, 2);
         var save = new Button { Text = "Save configuration and restart", AutoSize = true, Margin = new Padding(3, 10, 3, 3) };
         save.Click += async (_, _) => await SaveConfiguration();
         grid.Controls.Add(save, 2, 2); grid.SetColumnSpan(save, 2);
-        var box = new GroupBox { Text = "Proxy configuration (protocol is selected automatically)", Dock = DockStyle.Top, AutoSize = true };
+        var box = new GroupBox { Text = "Proxy configuration", Dock = DockStyle.Top, AutoSize = true };
         box.Controls.Add(grid); return box;
     }
 
@@ -100,6 +102,8 @@ public sealed class MainForm : Form
         {
             var c = store.Load(); server.Text = c.Server; serverPort.Value = c.ServerPort;
             username.Text = c.Username; password.Text = c.Password; reservePort.Value = c.ReservePort;
+            protocol.SelectedItem = c.TryGetProtocol(out var selected) ? selected.ToConfigValue() : null;
+            if (protocol.SelectedIndex < 0) message.Text = "Select a protocol before saving this older configuration.";
         }
         catch (Exception e) { ShowError("Could not load config.json", e); }
     }
@@ -109,7 +113,8 @@ public sealed class MainForm : Form
         try
         {
             SetBusy(true, "Saving protected configuration...");
-            var config = new ProxyConfig(null, null, server.Text, (int)serverPort.Value, (int)reservePort.Value, username.Text, password.Text);
+            if (!ProxyProtocolNames.TryParse(protocol.SelectedItem?.ToString(), out var selected)) throw new InvalidOperationException("Select HTTP, SOCKS4, or SOCKS5.");
+            var config = new ProxyConfig(null, null, server.Text, (int)serverPort.Value, (int)reservePort.Value, username.Text, password.Text, selected.ToConfigValue());
             store.Save(config);
             var state = ServiceManager.GetStatus();
             if (state is not null && state != ServiceControllerStatus.Stopped) await Task.Run(ServiceManager.Restart);
@@ -131,9 +136,12 @@ public sealed class MainForm : Form
         if (busy) return;
         var state = ServiceManager.GetStatus();
         serviceValue.Text = state?.ToString() ?? "Not installed";
-        var status = StatusPresenter.Map(state, StatusReader.Read(ApplicationPaths.StatusFile), DateTimeOffset.UtcNow);
+        var snapshot = StatusReader.Read(ApplicationPaths.StatusFile);
+        var status = StatusPresenter.Map(state, snapshot, DateTimeOffset.UtcNow);
         connectionValue.Text = status.Text; protocolValue.Text = status.Protocol;
-        connectionValue.ForeColor = status.State switch { ProxyConnectionState.Connected => Color.DarkGreen, ProxyConnectionState.Error => Color.Firebrick, _ => Color.DarkOrange };
+        if (state == ServiceControllerStatus.Stopped) message.Text = "The Windows service is stopped.";
+        else if (snapshot is not null) message.Text = snapshot.Message;
+        connectionValue.ForeColor = status.State switch { ProxyConnectionState.Connected => Color.DarkGreen, ProxyConnectionState.Connecting or ProxyConnectionState.Reconnecting => Color.DarkOrange, _ => Color.Firebrick };
         start.Enabled = state == ServiceControllerStatus.Stopped;
         stop.Enabled = state is ServiceControllerStatus.Running or ServiceControllerStatus.Paused;
         restart.Enabled = state is ServiceControllerStatus.Running or ServiceControllerStatus.Paused;

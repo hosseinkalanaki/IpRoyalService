@@ -15,9 +15,17 @@ public static class LogTailReader
         var lines = new Queue<string>();
         while (reader.ReadLine() is { } line)
         {
-            lines.Enqueue(EnforcementController.Redact(line, password, username));
+            var clean = EngineLogProcessor.Clean(EnforcementController.Redact(line, password, username));
+            if (IsLowLevelNoise(clean)) continue;
+            lines.Enqueue(clean);
             while (lines.Count > maxLines) lines.Dequeue();
         }
         return string.Join(Environment.NewLine, lines);
+    }
+
+    public static bool IsLowLevelNoise(string value)
+    {
+        var lower = value.ToLowerInvariant();
+        return lower.Contains("inbound/tun") || lower.Contains("outbound/direct[rdp-direct]") || lower.Contains("inbound/mixed") || lower.Contains("outbound packet connection") || lower.Contains("outbound connection to") || lower.Contains("exchange") && lower.Contains("dns");
     }
 }

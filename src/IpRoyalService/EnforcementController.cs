@@ -6,10 +6,13 @@ public sealed class EnforcementController(SingBoxConfigWriter writer, ILogger<En
 {
     private Process? process;
     public bool IsRunning => process is { HasExited: false };
+    public EngineLogEvent? LatestFailure { get; private set; }
+    public void ClearLatestFailure() => LatestFailure = null;
 
     public async Task StartAsync(ProxyConfig config, string baseDir, CancellationToken ct)
     {
         if (IsRunning) return;
+        LatestFailure = null;
         var exe = Path.Combine(baseDir, "engine", "sing-box.exe");
         if (!File.Exists(exe)) throw new InvalidOperationException($"Required packet engine is missing: {exe}. Reinstall the application from the Windows installer.");
         var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "IpRoyalService");
@@ -18,13 +21,14 @@ public sealed class EnforcementController(SingBoxConfigWriter writer, ILogger<En
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         psi.ArgumentList.Add("run"); psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(configPath);
         process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) log.LogInformation("engine: {Message}", Redact(e.Data, config.Password, config.Username)); };
-        process.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) log.LogWarning("engine: {Message}", Redact(e.Data, config.Password, config.Username)); };
+        process.OutputDataReceived += (_, e) => HandleEngineLine(e.Data, config);
+        process.ErrorDataReceived += (_, e) => HandleEngineLine(e.Data, config);
         if (!process.Start()) throw new InvalidOperationException("Transparent packet engine failed to start.");
         process.BeginOutputReadLine(); process.BeginErrorReadLine();
         await Task.Delay(1500, ct);
         if (process.HasExited) throw new InvalidOperationException($"Transparent packet engine exited with code {process.ExitCode}.");
         log.LogInformation("Enforcement engine started with strict IPv4/IPv6 routing and DNS interception");
+        log.LogInformation("RDP exemption remains active while proxy enforcement is running");
     }
 
     public async Task StopAsync()
@@ -41,14 +45,29 @@ public sealed class EnforcementController(SingBoxConfigWriter writer, ILogger<En
     }
     public static string Redact(string text, string secret, string? username = null)
     {
-        if (string.IsNullOrEmpty(secret)) return text;
-        var redacted = text.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
-        if (!string.IsNullOrEmpty(username))
+        var redacted = text;
+        if (!string.IsNullOrEmpty(secret)) redacted = redacted.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
+        if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(secret))
         {
             var basicToken = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{secret}"));
             redacted = redacted.Replace(basicToken, "[REDACTED]", StringComparison.Ordinal);
         }
+        if (!string.IsNullOrEmpty(username)) redacted = redacted.Replace(username, "[REDACTED]", StringComparison.Ordinal);
         return redacted;
+    }
+
+    private void HandleEngineLine(string? line, ProxyConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return;
+        var source = EngineLogProcessor.Clean(line);
+        var item = EngineLogProcessor.Classify(source);
+        var clean = Redact(source, config.Password, config.Username);
+        try { Directory.CreateDirectory(ApplicationPaths.DataDirectory); File.AppendAllText(ApplicationPaths.DiagnosticLogFile, $"{DateTimeOffset.UtcNow:O} {clean}{Environment.NewLine}"); } catch { }
+        if (item.Failure != ProxyFailureKind.None) LatestFailure = item;
+        if (!item.ShowInUserLog) return;
+        if (item.Level == LogLevel.Error) log.LogError("Proxy engine: {Message}", item.Message);
+        else if (item.Level == LogLevel.Warning) log.LogWarning("Proxy engine: {Message}", item.Message);
+        else log.LogInformation("Proxy engine: {Message}", item.Message);
     }
 
     private static void SecureRuntimeConfiguration(string path)

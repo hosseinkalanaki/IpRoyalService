@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
 using IpRoyalService;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace IpRoyalControl;
 
@@ -10,17 +9,20 @@ public sealed class ControlConfigStore(string path)
     private static readonly JsonSerializerOptions OutputOptions = new() { WriteIndented = true };
     public string Path { get; } = path;
 
-    public ProxyConfig Load() => new ConfigLoader(NullLogger<ConfigLoader>.Instance).Load(Path);
+    public ProxyConfig Load()
+    {
+        if (!File.Exists(Path)) throw new InvalidOperationException($"Configuration file not found: {Path}");
+        try { return JsonSerializer.Deserialize<ProxyConfig>(File.ReadAllText(Path)) ?? throw new JsonException("Empty configuration"); }
+        catch (Exception e) when (e is JsonException or IOException) { throw new InvalidOperationException("Configuration could not be read or parsed.", e); }
+    }
 
     public void Save(ProxyConfig config, bool protectAcl = true)
     {
         var errors = ConfigLoader.Validate(config);
         if (errors.Count > 0) throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
-        if (string.IsNullOrWhiteSpace(config.Username) || string.IsNullOrEmpty(config.Password))
-            throw new InvalidOperationException("Username and password are required.");
-
         var json = JsonSerializer.Serialize(new
         {
+            protocol = config.TryGetProtocol(out var protocol) ? protocol.ToConfigValue() : throw new InvalidOperationException("Select HTTP, SOCKS4, or SOCKS5."),
             server = config.Server.Trim(),
             server_port = config.ServerPort,
             reserve_port = config.ReservePort,

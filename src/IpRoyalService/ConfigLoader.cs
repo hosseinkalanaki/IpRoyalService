@@ -11,7 +11,8 @@ public sealed class ConfigLoader(ILogger<ConfigLoader> log)
         catch (Exception e) when (e is JsonException or IOException) { throw new InvalidOperationException("Configuration could not be read or parsed.", e); }
         var errors = Validate(value);
         if (errors.Count != 0) throw new InvalidOperationException("Invalid configuration: " + string.Join("; ", errors));
-        log.LogInformation("Configuration validated: protocolSelection=automatic, server={Server}, serverPort={ServerPort}, reservePort={ReservePort}, usernamePresent={UsernamePresent}", value.Server, value.ServerPort, value.ReservePort, !string.IsNullOrEmpty(value.Username));
+        value.TryGetProtocol(out var protocol);
+        log.LogInformation("Configuration loaded: protocol={Protocol}, server={Server}, serverPort={ServerPort}, reservePort={ReservePort}, usernamePresent={UsernamePresent}", protocol.ToConfigValue(), value.Server, value.ServerPort, value.ReservePort, !string.IsNullOrEmpty(value.Username));
         return value;
     }
 
@@ -20,11 +21,9 @@ public sealed class ConfigLoader(ILogger<ConfigLoader> log)
         var e = new List<string>();
         if (string.IsNullOrWhiteSpace(c.Server)) e.Add("server is required");
         if (c.ServerPort is < 1 or > 65535) e.Add("server_port must be 1..65535");
-        if (c.ReservePort is < 1 or > 65533) e.Add("reserve_port must be 1..65533 so automatic protocol health ports are available");
+        if (c.ReservePort is < 1 or > 65535) e.Add("reserve_port must be 1..65535");
         if (c.ServerPort == c.ReservePort) e.Add("reserve_port must differ from server_port");
-        var hasUsername = !string.IsNullOrWhiteSpace(c.Username);
-        var hasPassword = !string.IsNullOrEmpty(c.Password);
-        if (hasUsername != hasPassword) e.Add("username and password must either both be provided or both be empty for a proxy without authentication");
+        if (!c.TryGetProtocol(out _)) e.Add("protocol must be HTTP, SOCKS4, or SOCKS5; open IPRoyal Proxy Control to select it");
         return e;
     }
 }

@@ -1,7 +1,8 @@
 {
-    "server": "",
-    "server_port": 1080,
-    "reserve_port": 11200,
-    "username": "",
-    "password": ""
+  "protocol": "SOCKS5",
+  "server": "",
+  "server_port": 1080,
+  "reserve_port": 11200,
+  "username": "",
+  "password": ""
 }
